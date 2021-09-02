@@ -1,0 +1,131 @@
+//KC03D39J JOB ,'Jeff Byerly',MSGCLASS=H
+//STEP1    EXEC  PGM=ASSIST
+//STEPLIB    DD  DSN=KC02293.ASSIST.LOADLIB,DISP=SHR
+//SYSPRINT   DD  SYSOUT=*
+//SYSIN      DD  *
+************************************************************
+*
+*  Program:     ASSIGN3
+*  Programmer:  Jeff Byerly
+*
+*  Register usage:
+*         1     Used by XDECI
+*         2     Order ID -- Division later on
+*         3     Product ID -- Division later on
+*         4     Price of product
+*         5     Number of product ordered
+*         6     Discount
+*         7     Shipping
+*         8     Total Sum for all sales
+*         9     Total for each sale
+*         10     Number of total sales
+*         11    Number w/ free shipping
+*         12    Used for Multiplication
+*         13    Pre-total sale amount
+************************************************************
+MAIN     CSECT
+         USING MAIN,15
+         SR    2,2        Empties registers
+         SR    3,3
+         SR    4,4
+         SR    5,5
+         SR    8,8
+         SR    9,9
+         SR    10,10
+         SR    11,11
+         XPRNT HEADER,62            Prints the top header
+         XPRNT COLUMN,93           Prints the column headers
+LOOP     XREAD BUFFER,80           Loop to read file in
+         BC    B'0100',ENDLOOP     Branches to the end when EOF
+         A     10,=F'1'             Adds 1 to the total sales counter
+         XDECI 2,BUFFER   Starts reading from Buffer into Reg's
+         XDECI 3,0(,1)
+         XDECI 4,0(,1)
+         XDECI 5,0(,1)
+         SR    6,6         zeroes out Reg's
+         SR    7,7
+         LR    12,4        loads into different reg for calc
+         LR    13,5
+         MR    12,4        Multiplies item price x quantity sold
+         C     13,=F'12499'   checks if pre-total is over threshold
+         BC    B'0010',DISC1  Branches if it is higher
+TEST2    C     3,=F'566824'   checks order id for certain ID
+         BC    B'1000',DISC2  branches if ID's match
+TEST3    C     13,=F'7500'    tests pre-total for shipping cost
+         BC    B'1010',SHIP1  2 different shipping options
+         BC    B'0100',SHIP2
+ENDTEST  LR    9,13        Loads pre-total into 9 for final total
+         SR    9,6         subtracts any discount
+         AR    9,7         adds shipping
+         AR    8,9         Adds total for sale into overall total
+         XDECO 2,ORDERID    Next lines get register ready for output
+         XDECO 3,PRODID
+         XDECO 4,PRICE
+         XDECO 5,NUMORD
+         XDECO 6,DISC
+         XDECO 7,SHIP
+         XDECO 9,TOTAL
+         XPRNT LINE,94         Prints line with all info
+         BC    B'1111',LOOP     Always branches to top of loop
+SHIP1    A     7,=F'0'        Sets shippng to 0
+         A     11,=F'1'
+         BC    B'1111',ENDTEST
+SHIP2    A     7,=F'500'          Sets shipping to 500
+         BC    B'1111',ENDTEST
+DISC1    A     6,=F'600'         Adds a 600 discount
+         BC    B'1111',TEST2
+DISC2    A     6,=F'1000'         Adds a 1000 discount
+         BC    B'1111',TEST3
+ENDLOOP  DS    0H      End here after done reading file
+         LR    3,8     Loads total sale sum into 3 for average
+         M     2,=F'1'
+         DR    2,10       Divides total sale amount by number of sales
+         XDECO 10,TOT     Prepares info in Reg's for output
+         XDECO 11,FREESH
+         XDECO 8,SUM
+         XDECO 3,AVG
+         XPRNT ENDLINE,39  Begins printing final lines
+         XPRNT FSHIP,39
+         XPRNT SUMSAL,39
+         XPRNT AVGSAL,39
+         BR    14
+         LTORG              Literals defined after here
+ENDLINE  DC    CL27'0Total Number of Sales:'
+TOT      DS    CL12
+FSHIP    DC    CL27'0Number with free shipping:'
+FREESH   DS    CL12
+SUMSAL   DC    CL27'0Sum of all sales:'
+SUM      DS    CL12
+AVGSAL   DC    CL27'0Average sale:'
+AVG      DS    CL12
+HEADER   DC    CL50'1'
+         DC    CL12'Sales Report'
+COLUMN   DC    CL9'0ORDER ID'
+         DC    CL8' '
+         DC    CL10'PRODUCT ID'
+         DC    CL4' '
+         DC    CL10'PRICE EACH'
+         DC    CL4' '
+         DC    CL14'NUMBER ORDERED'
+         DC    CL4' '
+         DC    CL8'DISCOUNT'
+         DC    CL4' '
+         DC    CL8'SHIPPING'
+         DC    CL4' '
+         DC    CL6' TOTAL'
+BUFFER   DS    80C
+LINE     DC    CL2'0'
+ORDERID  DS    CL12
+PRODID   DS    CL12
+PRICE    DS    CL12
+         DC    CL2'  '
+NUMORD   DS    CL12
+         DC    CL4'  '
+DISC     DS    CL12
+         DC    CL2' '
+SHIP     DS    CL12
+TOTAL    DS    CL12    
+         END   MAIN
+/*
+//FT05F001  DD  DSN=KC02314.SUMMER19.CSCI360.HW3DATA,DISP=SHR
+//
