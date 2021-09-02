@@ -1,0 +1,151 @@
+//KC03D39J JOB ,'Jeff Byerly',MSGCLASS=H
+//STEP1    EXEC  PGM=ASSIST
+//STEPLIB    DD  DSN=KC02293.ASSIST.LOADLIB,DISP=SHR
+//SYSPRINT   DD  SYSOUT=*
+//SYSIN      DD  *
+********************************************************
+*  Program:     Assign4
+*  Programmer:  Jeff Byerly
+*
+*       Register usage:
+*   10        Location to return to after branch
+*   12        Parameters
+********************************************************
+MAIN     CSECT
+         USING MAIN,15
+         LA    12,TABLE     Load the address of Table
+         ST    12,PARAMS     Store Table address in params
+         LA    12,EOT       Load address of end of table
+         ST    12,PARAMS+4   Store end of table in params
+         LA    12,TABLENG  Load the address of table lenght
+         ST    12,PARAMS+8   Store the table lenght in params
+         LA    12,PARAMS     Load address of the params into 12
+         BAL   10,BUILD     Branches to BUILD
+         BAL   10,PRINT     Branches to PRINTS
+         BAL   10,EVENS     Branches to EVENS
+         BR    14           End
+****************************************************
+*       Register usage:
+*    2        Current num
+*    3        Table 
+*    4        EOT 
+*    5        Length of table 
+*    6        Counter
+*   10        Return to MAIN
+*   12        Paramaters
+******************************************************
+BUILD    DS    0H           BUILD subroutine starts here
+         SR    6,6          Zero out R6
+         LM    3,5,0(12)    Load paramaters into reg 3, 4 and 5.
+BUILDO   XREAD BUFFER,80    Read from file into BUFFER
+         BC    B'0100',ENDBUILD  Branches to end if done reading      
+         LA    1,BUFFER     loads address of BUFFER into reg 1
+BUILDI   XDECI 2,0(0,1)    Reads num in
+         BC    B'0001',BUILDO        Check if read failes
+         ST    2,0(0,3)     Store number in table
+         LA    3,4(0,3)     Advance the table pointer
+         A     6,=F'1'      increment the counter
+         CR    3,4          check if EOT
+         BC    B'1000',ENDBUILD      finish if at EOT
+         B     BUILDI       always branch to top of loop
+ENDBUILD ST    6,0(0,5)     Stores the counter
+         BR    10           Branches back to main
+*****************************************************
+*       Register usage:
+*    2        pointer to PLINE location
+*    3        Table
+*    4        EOT
+*    5        Length of table
+*    6        counter for width
+*    7        Value from table
+*   10        Return to MAIN
+*   12        Parameters
+********************************************************
+PRINT    DS    0H           Start of subroutine
+         XPRNT HEAD1,55     Prints header for all nums
+         LM    3,5,0(12)    Load paramaters into reg 3, 4 and 5.
+         L     5,0(0,5)    
+PRINTO   L     6,=F'7'      Counter to limit table width
+         LA    2,PLINE+1    
+         MVI   PLINE+1,C' '   Use destructive overlap to clear line
+         MVC   PLINE+2(83),PLINE+1
+         C     5,=F'0'      Checks if done printing
+         BC    B'1000',ENDPRINT         
+PRINTI   C     5,=F'0'      Check if done printing
+         BC    B'1000',PRINTEND        
+         L     7,0(0,3)     put current num into reg 7
+         XDECO 7,TEMP       prepare current num for output
+         MVC   0(12,2),TEMP Moves 12 bytes from temp to reg 2.
+         LA    2,12(0,2)    Adds 12 to value in reg 2
+         LA    3,4(0,3)     adds 4 t oval in reg 3
+         S     5,=F'1'      decrement lenght of table by 1
+         S     6,=F'1'     decrement width counter by 1
+         C     6,=F'0'      check if max per line
+         BNE   PRINTI       branch back if not end of line
+         XPRNT PLINE,85     Prints the line
+         B     PRINTO       branches back to outer loop
+PRINTEND XPRNT PLINE,85     
+ENDPRINT BR    10           Branch back to main
+*****************************************************
+*      Register usage:
+*    2        pointer to PLINE location
+*    3        Table 
+*    4        EOT 
+*    5        Length of table
+*    6        Used for division as remainder to check if even
+*    7        Used as odd reg for division
+*    8        Counter for width
+*   10        Return to MAIN
+*   12        Parameters
+*********************************************************
+EVENS    DS    0H          
+         XPRNT HEAD2,50     Prints Even number header
+         LM    3,5,0(12)    Load paramaters into reg 3, 4 and 5.
+         L     5,0(0,5)     
+EVENSO   L     8,=F'5'      Counter for width
+         LA    2,PLINE+1    
+         MVI   PLINE+1,C' ' Clear print line
+         MVC   PLINE+2(83),PLINE+1
+         C     5,=F'0'      check if EOT
+         BC    B'1000',ENDEVEN         branch to end if EOT
+EVENSI   C     5,=F'0'      check if EOT
+         BC    B'1000',EVENEND        branch to end if EOT
+         L     7,0(0,3)     loads current num into reg7
+         S     5,=F'1'      Decrement length of table
+         M     6,=F'1'      preapred reg6,7 for division
+         D     6,=F'2'      Divide reg 7 by '2'
+         C     6,=F'0'      checks the remainder to see if even
+         BNE   ODD         branch if not even
+         L     6,0(0,3)     loads current number into reg 6
+         XDECO 6,TEMP       prepare num for output
+         MVC   0(12,2),TEMP Moves 12 bytes from temp to reg 2.
+         LA    2,12(0,2)    Adds 12 to value in reg 2
+         S     8,=F'1'      Decrement the line counter by 1
+ODD      LA    3,4(0,3)     Adds 3o to val in reg3
+         C     8,=F'0'      check if max width
+         BNE   EVENSI       Branch back to inner loop
+         XPRNT PLINE,61     prints numbers
+         B     EVENSO        Go back to outer loop
+EVENEND  XPRNT PLINE,61     Print numbers
+ENDEVEN  BR    10           branch back to main
+*************************************************************
+         LTORG                Literals below here
+TABLE    DS    72F'-256'
+EOT      DS    0H
+TABLENG  DS    F'0'
+HEAD1    DC    CL40'1'
+         DC    CL15'List of Numbers'
+HEAD2    DC    CL30'1'
+         DC    CL20'List of Even Numbers'
+TEMP     DS    CL12' '
+PARAMS   DS    F'0'
+         DS    F'0'
+         DS    F'0'
+PLINE    DC    CL1'0'
+         DS    CL80' '
+BUFFER   DS    80C
+         DC    C'*'
+         END   MAIN
+/*
+//FT05F001  DD  DSN=KC02314.SUMMER19.CSCI360.HW4DATA,DISP=SHR
+//
