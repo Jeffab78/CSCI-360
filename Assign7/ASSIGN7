@@ -1,0 +1,320 @@
+//KC03D39J JOB ,'Jeff Byerly',MSGCLASS=H
+//STEP1    EXEC  PGM=ASSIST
+//STEPLIB    DD  DSN=KC02293.ASSIST.LOADLIB,DISP=SHR
+//SYSPRINT   DD  SYSOUT=*
+//SYSIN      DD  *
+********************************************************
+*    Program:     Assign7
+*  
+*    Programmer:  Jeff Byerly
+*            
+*                        
+********************************************************
+ENTRY   DSECT   
+DATE    DS    7C
+NAME    DS    13C
+SYM     DS    3C
+NUM     DS    PL2 
+*********************************************************
+*      MAIN CSECT
+*    Register usage:
+*    1   PARAMS
+*   10   subroutine branch address
+*   14   return address
+*  
+*********************************************************
+MAIN     CSECT
+         USING MAIN,15
+         ST    14,EXIT      
+         LA    13,SAVE     
+         LA    1,TABLE    loads table address into params
+         ST    1,PARAMS       stores table address into params
+         LA    1,EOT      loads EOT into reg 1
+         ST    1,PARAMS+4  stores EOT into params
+         LA    1,PARAMS      
+         L     10,=V(BUILD)
+         BALR  14,10        branches to BUILD subroutine
+         LA    1,HEADER1    loads first header address
+         ST    1,PARAMS+8   stores first header into params
+         LA    1,PARAMS      
+         L     10,=V(PRINT) 
+         BALR  14,10        branches to PRINT subroutine
+         LA    1,PARAMS    loads PARAMS back into reg1
+         L     10,=V(SORT)   
+         BALR  14,10        branches to SORT subroutine
+         LA    1,HEADER2   loads address of updated header
+         ST    1,PARAMS+8   stores new header into PARAMS
+         LA    1,PARAMS      
+         L     10,=V(PRINT) 
+         BALR  14,10        Branches to PRINT subroutine again
+         L     14,EXIT      
+         BR    14           
+         LTORG            Literals below here
+TABLE    DC    3000C' '   120 entries with each 25 bytes
+EOT      DS    F
+PARAMS   DS    4F
+HEADER1  DC    CL50'1                   Chronological List of Elements'
+         DC    CL19'           Page    '
+HEADER2  DC    CL50'1               Elements Sorted by Atomic Number  '
+         DC    CL19'           Page    '
+EXIT     DS    F
+SAVE     DS    18F
+*******************************************************
+*     BUILD CSECT
+*    Register usage:
+*      1    PARAMS
+*      3    end of item read
+*      4    space location/entry length
+*      7    TABLE 
+*      8    EOT
+*    
+********************************************************
+BUILD    CSECT
+         STM   14,12,12(13)    entry linkage
+         LR    12,15
+         USING BUILD,10  
+         LA    14,BSAVE
+         ST    13,4(,14)
+         ST    14,8(,13)
+         LR    13,14
+         LM    7,8,0(1)    Loads PARAMS into reg 7 and 8
+         USING ENTRY,7    
+BLOOP    XREAD BUFFER,80   Reads into BUFFER
+         BL    ENDBUILD
+         LA    1,BUFFER        loads address of BUFFER into reg 1
+         TRT   0(80,1),SCANTAB  looks for next date
+         BZ    BLOOP
+         LR    3,1       location of current entry
+         TRT   0(80,1),SPACETAB looks for space
+         LR    4,1   loads space location 
+         SR    4,3    puts the length of date into reg 4
+         BCTR  4,0 
+         EX    4,NEWDATE    puts date in NEWDATE
+         TR    DATE(7),LOWERC makes it lower case
+         TRT   0(80,1),SCANTAB looks for next name
+         BZ    BLOOP
+         LR    3,1     location of current name
+         TRT   0(80,1),SPACETAB 
+         LR    4,1    loads space location
+         SR    4,3      puts the length of name into reg 4
+         BCTR  4,0 
+         EX    4,NEWNAME   puts name in NEWNAME
+         TR    NAME(13),LOWERC   Sets all to lower
+         TR    NAME(1),HIGHERC   Sets first letter to upper
+         TRT   0(80,1),SCANTAB  looks for next symbol
+         BZ    BLOOP
+         LR    3,1     location of current symbol
+         TRT   0(80,1),SPACETAB looks for next space
+         LR    4,1    loads space location
+         SR    4,3    puts the length of symbol into reg 4
+         BCTR  4,0 
+         EX    4,NEWSYM   puts symbol in NEWSYM
+         TR    SYM(3),LOWERC   all lower case
+         TR    SYM(1),HIGHERC   first letter to uppercase
+         TRT   0(80,1),SCANTAB looks for atomic number
+         BZ    BLOOP 
+         LR    3,1      location of crrent AN
+         TRT   0(80,1),SPACETAB looks for space
+         LR    4,1   loads space location
+         SR    4,3    puts the length of AN into reg 4
+         BCTR  4,0 
+         EX    4,NEWNUM  puts AN in NEWNUM
+         LA    7,25(0,7) advance table pointer
+         B     BLOOP 
+*  
+ENDBUILD DS    0H
+         ST    7,0(0,8)  stores EOT
+         L     13,4(,13)     exit linkage
+         LM    14,12,12(13)
+         BR    14           Branch back to main
+         LTORG             Literals below here
+NEWDATE  MVC   DATE(0),0(3)
+NEWNAME  MVC   NAME(0),0(3)
+NEWSYM   MVC   SYM(0),0(3)
+NEWNUM   PACK  NUM(2),0(0,3)
+BUFFER   DC    80C' '
+         DC    C'*'
+SCANTAB  DC    256X'00'     **Tables used for replacements
+         ORG   SCANTAB+C'A'
+         DC    9X'01'
+         ORG
+         ORG   SCANTAB+C'J'
+         DC    9X'01'
+         ORG
+         ORG   SCANTAB+C'S'
+         DC    8X'01'
+         ORG
+         ORG   SCANTAB+C'a'
+         DC    9X'01'
+         ORG
+         ORG   SCANTAB+C'j'
+         DC    9X'01'
+         ORG
+         ORG   SCANTAB+C's'
+         DC    9X'01'
+         ORG
+         ORG   SCANTAB+C'0'
+         DC    10X'01'
+         ORG
+HIGHERC  DC    256C' '
+         ORG   HIGHERC+C'a'
+         DC    CL9'ABCDEFGHI'
+         ORG
+         ORG   HIGHERC+C'j'
+         DC    CL9'JKLMNOPQR'
+         ORG
+         ORG   HIGHERC+C's'
+         DC    CL9'STUVWXYZ'
+         ORG
+         ORG   HIGHERC+C'A'
+         DC    CL9'ABCDEFGHI'
+         ORG
+         ORG   HIGHERC+C'J'
+         DC    CL9'JKLMNOPQR'
+         ORG
+         ORG   HIGHERC+C'S'
+         DC    CL9'STUVWXYZ'
+         ORG
+         ORG   HIGHERC+C'0'
+         DC    CL10'0123456789'
+         ORG
+LOWERC   DC    256C' '
+         ORG   LOWERC+C'a'
+         DC    CL9'abcdefghi'
+         ORG
+         ORG   LOWERC+C'j'
+         DC    CL9'jklmnopqr'
+         ORG
+         ORG   LOWERC+C's'
+         DC    CL8'stuvwxyz'
+         ORG
+         ORG   LOWERC+C'A'
+         DC    CL9'abcdefghi'
+         ORG
+         ORG   LOWERC+C'J'
+         DC    CL9'jklmnopqr'
+         ORG
+         ORG   LOWERC+C'S'
+         DC    CL8'stuvwxyz'
+         ORG
+         ORG   LOWERC+C'0'
+         DC    CL10'0123456789'
+         ORG
+SPACETAB DC    256X'00'
+         ORG   SPACETAB+X'40'
+         DC    X'01'
+         ORG
+BSAVE    DS    18F
+*****************************************************
+*      PRINT CSECT
+*     Register usage:
+*     1     PARAMS
+*     6     Counter
+*     7     TABLE
+*     8     EOT
+*     9     Header
+*
+****************************************************
+PRINT    CSECT
+         STM   14,12,12(13)  entry linkage
+         LR    12,15
+         USING PRINT,10     
+         LM    7,9,0(1)     
+         LA    14,PSAVE
+         ST    13,4(,14)
+         ST    14,8(,13)
+         LR    13,14
+         USING ENTRY,7
+         SR    6,6      zero out counter       
+PLOOP1   C     7,0(0,8)      checks if EOT
+         BE    ENDPRINT
+         C     6,=F'0'    check if end of page
+         BE    PAGEHEAD 
+PLOOP2   MVC   PRINTNA(13),NAME    Readies NAME to print
+         MVC   PRINTD(7),DATE       readies DATE for print
+         MVC   PRINTS(2),SYM         readies SYM for print
+         MVC   PRINTNU(4),=X'40202020'  readies NUM for print
+         ED    PRINTNU(4),NUM 
+         XPRNT PLINE,65 
+         LA    7,25(0,7)    Advances table pointer
+         S     6,=F'1'      decrement counter for page
+         B     PLOOP1 
+PAGEHEAD L     6,=F'50'        loads new page counter
+         MVC   65(4,9),=X'40202020' readies page number
+         ED    65(4,9),PAGENUM 
+         XPRNT 0(,9),69    
+         XPRNT PHEADER,69    Prints page header
+         AP    PAGENUM,=PL1'1' 
+         B     PLOOP2 
+*
+ENDPRINT L     13,4(,13)    exit linkage
+         LM    14,12,12(13)
+         BR    14       branches back to MAIN   
+         LTORG             Literals below here
+PHEADER  DC    CL37'-Name of Element   Chemical Symbol   '
+         DC    CL32'Atomic Number    Date Discovered'
+PAGENUM  DC    PL2'1'
+PLINE    DC    C' '
+PRINTNA  DC    13C' '
+         DC    11C' '
+PRINTS   DC    2C' '
+         DC    14C' '
+PRINTNU  DC    4C' '
+         DC    13C' '
+PRINTD   DC    7C' '
+PSAVE    DS    18F
+*********************************************************
+*      SORT CSECT
+*    Register usage:
+*      1    PARAMS
+*      2    TABLE
+*      3    first entry
+*      4    second entry
+*      7    TABLE address
+*      8    EOT
+*
+**********************************************************
+SORT     CSECT
+         STM   14,12,12(13)     entry linkage
+         LR    12,15
+         USING SORT,10
+         LA    14,SSAVE
+         ST    13,4(,14)
+         ST    14,8(,13)
+         LR    13,14
+         LM    7,8,0(1)     Loads PARAMS into reg 7 and 8
+         LR    2,7       loads table address
+         L     8,0(,8)     loads EOT
+         A     8,=F'-50'   no need to sort last entry
+SLOOP1   DS    0H 
+         CR    2,8          checks if EOT
+         BC    B'1010',ENDSORT    
+         LA    3,50(0,2)    loads first entry
+         LA    4,75(0,2)    loads second entry
+SLOOP2   DS    0H 
+         A     3,=F'-25'  decrements pointer by 1 entry
+         A     4,=F'-25'  decrements pointer by 1 entry
+         CLC   23(2,3),23(4) compare two atomic numbers
+         BH    ORDER        branches if need to swap
+         LA    2,25(0,2) advance table pointer
+         B     SLOOP1 
+ORDER    DS    0H         
+         MVC   TEMP(25),0(3) swaps the 2 entries
+         MVC   0(25,3),0(4)  swaps the 2 entries
+         MVC   0(25,4),TEMP  swaps the 2 entries
+         CR    3,7        checks if done
+         BE    SLOOP1 
+         B     SLOOP2
+*
+ENDSORT  DS    0H       
+         L     13,4(,13)       exit linkage
+         LM    14,12,12(13)
+         BR    14           branch back to MAIN
+         LTORG           Literals below here
+TEMP     DS    25C
+SSAVE    DS    18F
+*************************************************************
+         END   MAIN
+/*
+//FT05F001  DD  DSN=KC02314.SUMMER19.CSCI360.HW7DATA,DISP=SHR
+//
