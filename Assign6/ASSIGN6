@@ -1,0 +1,237 @@
+//KC03D39J JOB ,'Jeff Byerly',MSGCLASS=H
+//STEP1    EXEC  PGM=ASSIST
+//STEPLIB    DD  DSN=KC02293.ASSIST.LOADLIB,DISP=SHR
+//SYSPRINT   DD  SYSOUT=*
+//SYSIN      DD  *
+********************************************************
+*  Program:     Assign6
+*  Programmer:  Jeff Byerly
+*
+********************************************************
+ENTRY    DSECT
+DESCR    DS     30C
+VALUE    DS     PL3
+********************************************************
+*      MAIN CSECT
+*   Register Usage:
+*       1  PARAMS
+*       10 subourtine branch address
+*       14 return address
+*****************************************************
+MAIN     CSECT  
+         USING MAIN,15
+         ST    14,EXIT     saves exit location
+         LA    13,SAVE     loads save location
+         LA    1,TABLE        Loads address of TABLE
+         ST    1,PARAMS      Stores address of table into params
+         LA    1,EOT         loads EOT address
+         ST    1,PARAMS+4    stores EOT in PARAMS
+         LA    1,BUFFER          loads buffer address
+         ST    1,PARAMS+8      stores buffer address
+         LA    1,PARAMS       loads all of PARAMS
+         L     10,=V(BUILD)   loads address of BUILD subroutine
+         BALR  14,10
+         LA    1,PARAMS
+         L     10,=V(PRINT)   loads address of PRINT
+         BALR  14,10
+         LA    1,PARAMS
+         L     10,=V(STATS)   loads address of STATS
+         BALR  14,10
+         L     14,EXIT
+         BR    14           
+         LTORG           literals below here
+EXIT     DS    F
+SAVE     DS    18F'0'
+TABLE    DS    20CL33
+EOT      DS    0H
+BUFFER   DS    80C
+PARAMS   DC    F'0'
+         DS    F'0'
+         DS    F'0'
+********************************************************
+*  BUILD Subroutine         
+*   Register Usage:  
+*       2    Table address
+*       3    EOT
+*       4    Buffer address     
+*         
+********************************************************* 
+BUILD    CSECT
+         STM   14,12,12(13)   Save the registers
+         LR    12,15                12 base register
+         USING BUILD,10
+         USING ENTRY,2 
+         LA    14,BSAVE   
+         ST    13,4(0,14)     Save the forward pointer.
+         ST    14,8(0,13)     Save the backward pointer.
+         LR    13,14
+         LM    2,4,0(1)        loads params into reg 2 -4
+BLOOP    XREAD 0(,4),80       reads into buffer address
+         BC    B'0100',BEND
+         LA    1,0(,4)         
+         MVC   DESCR(30),0(1)   moves description from buffer 
+         LA    1,32(,1)
+         MVC   POSNEG(5),0(1)
+         PACK  VALUE(3),POSNEG(5)   packs the zoned decimal num
+         LA    2,33(,2)       advances table pointer
+         B     BLOOP
+BEND     DS    0H
+         ST    2,0(,3)        stores EOT
+         L     13,4(0,13)
+         LM    14,12,12(13)
+         BR    14
+         LTORG       literals 
+POSNEG   DS    CL5' '
+BSAVE    DS    18F                          
+*********************************************
+*     PRINT Subroutine                     
+*      Register Usage:
+*          2   Table address
+*          3   EOT          
+*                   
+**********************************************
+PRINT    CSECT
+         STM   14,12,12(13)   Save the registers
+         LR    12,15                12 base register
+         USING PRINT,10
+         USING ENTRY,2 
+         LA    14,PSAVE   
+         ST    13,4(0,14)     Save the forward pointer.
+         ST    14,8(0,13)     Save the backward pointer.
+         LR    13,14
+         LM    2,4,0(1)        loads params into reg 2 -4
+         SR    6,6
+         XPRNT HEADER1,38
+         XPRNT HEADER2,36
+PLOOP    MVC   PLINE+1(33),DESCR        moves descr to PLINE
+         MVC   PVAL(6),=X'2021204B2020'    formats for printing  
+         EDMK  PVAL(6),VALUE           formats for printing
+         BCTR  1,0
+         MVI   0(1),C'$'        adds dollar sign
+         CP    VALUE,NEGPAK        checks if negative
+         BC    B'0100',PNEG
+         XPRNT PLINE,38
+         B     DONEP
+PNEG     XPRNT PLINE,41           negative Pline
+DONEP    LA    2,33(,2)
+         A     6,=F'1'          add one to count
+         C     2,0(,3)
+         BE    PEND
+         B     PLOOP
+*
+* 
+PEND     DS    0H
+         L     13,4(0,13)
+         LM    14,12,12(13)
+         BR    14         
+         LTORG
+HEADER1  DC    CL38'1            Susans Business Ventures'
+HEADER2  DC    CL36'-  Description                 Value'
+PLINE    DC    CL1'0'
+         DS    CL30' '
+PVAL     DC    CL6' '
+NEGAT    DC    CL3' CR'
+NEGPAK   DC    PL1'-1'
+PSAVE    DS    18F                         
+*******************************************************
+*    STATS Subroutine
+*      Register Usage:
+*        2   Table pointer         
+*        3   EOT        
+*        6   positive counter        
+*        7   negative counter
+*        8   total counter
+*           
+********************************************************
+STATS    CSECT
+         STM   14,12,12(13)   Save the registers
+         LR    12,15                12 base register
+         USING STATS,10
+         USING ENTRY,2 
+         LA    14,SSAVE   
+         ST    13,4(0,14)     Save the forward pointer.
+         ST    14,8(0,13)     Save the backward pointer.
+         LR    13,14
+         LM    2,4,0(1)        loads params into reg 2 -4
+         XPRNT THEADER,43
+         SR    6,6         Positive counter
+         SR    7,7             negative counter
+         SR    8,8          total count
+         MVC   HIGHPAK,VALUE       loads initial value to compare
+         MVC   LOWPAK,VALUE       loads initial value to compare
+SLOOP    A     8,=F'1'          adds 1 to total count
+         AP    PAKTOTAL,VALUE       adds value to total
+         CP    VALUE,NEGPAKS       checks if negative
+         BC    B'0100',SNEG         branches if negative
+         BC    B'1000',SPOSNEG         branches if 0
+         A     6,=F'1'           adds 1 to pos count
+         CP    HIGHPAK,VALUE         compares to highest so far
+         BC    B'0010',SPOSNEG
+         MVC   LARGEST(33),DESCR   copies descr if high
+         MVC   HIGHPAK,VALUE      updates highest value
+         B     SPOSNEG
+SNEG     A     7,=F'1'         adds 1 to neg count
+         CP    LOWPAK,VALUE      compares with current lowest
+         BC    B'0100',SPOSNEG        if not lowest, branch
+         MVC   SMALLEST(33),DESCR   
+         MVC   LOWPAK,VALUE        updates lowest
+         B     SPOSNEG
+SPOSNEG  DS    0H
+         LA    2,33(,2)       update table pointer
+         C     2,0(,3)         check if EOT
+         BE    SEND
+         B     SLOOP
+SEND     DS    0H
+         CVD   8,NUMVEND    Readies total ventures for output           
+         MVC   NUMVEN(8),=X'4020202020202120'  
+         ED    NUMVEN(8),NUMVEND+4
+         XPRNT TLINE,35                  
+         CVD   6,VENPOS     Readies pos ventures for output          
+         MVC   POSVEN(8),=X'4020202020202120' 
+         ED    POSVEN(8),VENPOS+4
+         XPRNT POSLINE,35
+         CVD   7,VENNEG     Readies neg ventures for output
+         MVC   NEGVEN(8),=X'4020202020202120' 
+         ED    NEGVEN(8),VENNEG+4
+         XPRNT NEGLINE,35
+         MVC   STOTAL(6),=X'2021204B2020'
+         EDMK  STOTAL(6),PAKTOTAL    formats total for printing
+         XPRNT PTOTAL,35
+         XPRNT PLARGE,60        Prints most profitable
+         XPRNT PSMALL,61        Prints least profitable
+         L     13,4(0,13)       exit linkage
+         LM    14,12,12(13)
+         BR    14         
+         LTORG        literals below here
+THEADER  DC    CL43'1       Summary of Susans Business Ventures'
+TLINE    DC    CL27'-Total number of ventures:'
+NUMVEN   DS    CL8
+NUMVEND  DS    D
+POSLINE  DC    CL27'-Total posivite ventures:  '
+POSVEN   DS    CL8
+VENPOS   DS    D
+NEGLINE  DC    CL27'-Total negative ventures:  '
+NEGVEN   DS    CL8
+VENNEG   DS    D
+NEGPAKS  DC    PL1'0'
+PLARGE   DC    CL29'-Most profitable venture: '
+LARGEST  DS    30C' '
+SPACE2   DS    30C
+PSMALL   DC    CL29'-Least profitable venture: '
+SMALLEST DS    30C' '
+SPACE1   DS    30C' '
+PTOTAL   DC    CL29'-Total for all ventures:     '
+STOTAL   DC    CL6' '
+DTOTAL   DS    D
+TOTALPAK DS    D
+PAKTOTAL DC    PL3'0'
+HIGHPAK  DS    PL3
+LOWPAK   DS    PL3
+AVGTOT   DC    CL35'-Average value for all ventures:   '
+AVGPAK   DC    PL3'0'
+SSAVE    DS    F
+         END   MAIN               
+/*
+//FT05F001  DD  DSN=KC02314.SUMMER19.CSCI360.HW6DATA,DISP=SHR
+/*
+//
