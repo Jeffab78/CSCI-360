@@ -1,3 +1,3 @@
 # CSCI-360
 
-Some of my work in Assembler for CSCI 466
+Some of my work in Assembly for CSCI 466
