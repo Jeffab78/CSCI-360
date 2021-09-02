@@ -1,0 +1,205 @@
+//KC03D39J JOB ,'Jeff Byerly',MSGCLASS=H
+//STEP1    EXEC  PGM=ASSIST
+//STEPLIB    DD  DSN=KC02293.ASSIST.LOADLIB,DISP=SHR
+//SYSPRINT   DD  SYSOUT=*
+//SYSIN      DD  *
+********************************************************
+*  Program:     Assign5
+*  Programmer:  Jeff Byerly
+*
+*       Register usage:
+*    1     PARAMS
+*    2     Used to store M value for Tally subroutine
+*    14    Return address
+*    10   subroutine branch address
+*
+********************************************************
+MAIN     CSECT
+         USING MAIN,15
+         ST    14,EXIT     Stores final exit register
+         LA    1,TABLE       Loads address of Table
+         ST    1,PARAMS    Stores 1 table into PARAMS
+         LA    1,EOT      loads EOT into reg 1
+         ST    1,PARAMS+4   stores EOT into PARAMS
+         LA    1,TABLENG    loads length of table into reg 1
+         ST    1,PARAMS+8   stores table length in PARAMS
+         LA    1,PARAMS      Loads all of PARAMS into reg 1
+         L     10,=V(BUILD)   Loads address of BUILD subroutine
+         BALR  14,10
+         LA    1,PARAMS        loads PARAMS into reg 1
+         L     10,=V(PRINT)    loads address of BUILD subroutine
+         BALR  14,10
+         LA    1,PARAMS
+         L     10,=V(TALLY)
+MFOUND   DS    0H
+         XREAD BUFFER2,80        Reads the rest of the file
+         BL    TDONE             branches to end when done with all M's
+         XDECI 2,BUFFER2         Puts first number after delimiter into reg 2
+         BO    MFOUND
+         LA    1,PARAMS           
+         ST    2,PARAMS+12       stores M into PARAMS for subroutine
+         BALR  14,10           branches to TALLY subroutine
+         B     MFOUND
+TDONE    DS    0H
+         L     14,EXIT
+         BR    14
+         LTORG              literals below here
+EXIT     DS    F
+BUFFER2  DC    80C' '
+TABLE    DS    75F'-16'
+EOT      DS    0H
+TABLENG  DS    F'0'
+PARAMS   DS    F'0'
+         DS    F'0'
+         DS    F'0'
+         DS    F'0'
+********************************************************
+*  BUILD Subroutine
+*          
+*   Register Usage:       
+*   1    PARAMS
+*   3    Table
+*   4    EOT
+*   5    Table Length  
+*   7     counter
+*           
+********************************************************* 
+BUILD    CSECT
+         STM   14,12,12(13)   Save the registers
+         LR    12,15                
+         USING BUILD,10         
+         LA    14,BSAVE    
+         ST    13,4(0,14)     Save the forward pointer.
+         ST    14,8(0,13)     Save the backward pointer.
+         LM    3,5,0(1)     Loads params into reg 3-5
+         LR    13,14 
+         SR    7,7          zeros out reg 7
+BLOOPO   XREAD BUFFER,80    read 80 bytes into BUFFER
+         BC    B'0100',BDONE         if read failed
+         LA    1,BUFFER     loads address of BUFFER into reg 1
+BLOOPI   XDECI 2,0(,1)     
+         BO    BLOOPO        if read fails
+         C     2,=F'-987654321'     look for delimiter
+         BE    BDONE
+         A     7,=F'1'      adds one to counter
+         ST    2,0(,3)     stores the num into TABLE
+         LA    3,4(,3)     advances the table pointer
+         CR    3,4         check if EOT
+         BE    BDONE         If at EOT end build
+         B     BLOOPI       Goto top of loop
+BDONE    DS    0H
+         ST    7,0(,5)     Store the number of table entries
+         L     13,4(,13)
+         LM    14,12,12(13)
+         BR    14           branch back to MAIN
+         LTORG              Literals below here
+BUFFER   DS    80C
+         DC    C'*'
+BSAVE    DS    18F'0'
+*********************************************
+*     PRINT Subroutine
+*         
+*      Register Usage:
+*        1 PARAMS
+*        3   TABLE
+*        4    EOT
+*        5    Table Length
+*        7   Counter   
+*        8   Current table value
+*           
+**********************************************
+PRINT    CSECT
+         STM   14,12,12(13)   Save the registers
+         LR    12,15                
+         USING PRINT,10         
+         LA    14,PSAVE    
+         ST    13,4(0,14)     Save the forward pointer.
+         ST    14,8(0,13)     Save the backward pointer.
+         LM    3,5,0(1)     Loads params into reg 3-5
+         LR    13,14
+         XPRNT PHEAD,43     prints header
+         L     5,0(,5)     loads TABLENG into reg 5
+PLOOPO   L     7,=F'6'      loads reg 6 with width counter of 6
+         LA    2,PLINE+1    loads addres of PLINE into re g2
+         MVI   PLINE+1,C' '  destructive overlap to clear line
+         MVC   PLINE+2(83),PLINE+1
+         C     5,=F'0'      check if done printing
+         BE    PDONE
+PLOOPI   C     5,=F'0'     checks if done printing
+         BE    FINALP
+         L     8,0(,3)     Get current value from table
+         XDECO 8,TEMP        get num ready to print
+         MVC   0(12,2),TEMP 
+         LA    2,12(,2)    
+         LA    3,4(,3)     
+         S     5,=F'1'      decrement table length counter
+         S     7,=F'1'      decrement line width counter
+         C     7,=F'0'      check if max per line
+         BNE   PLOOPI      
+         XPRNT PLINE,85     Prints each line
+         B     PLOOPO         
+FINALP   XPRNT PLINE,85     prints final line
+PDONE    DS    0H                      
+         L     13,4(,13)
+         LM    14,12,12(13)
+         BR    14           End of subroutine
+         LTORG              Literals below here
+PHEAD    DC    CL43'1                          Table Contents'
+PLINE    DC    CL1'0'
+         DS    CL84' '
+TEMP     DS    CL12' '
+PSAVE    DS    18F'0'
+*******************************************************
+*    TALLY Subroutine
+*         1 PARAMS
+*         3  TABLE
+*         4   EOT 
+*         6   M value              
+*         7   count for multiples               
+*         8    Even reg used to divide            
+*         9    used to test table values
+*           
+********************************************************
+TALLY    CSECT 
+         STM   14,12,12(13)   Save the registers
+         LR    12,15                
+         USING TALLY,10         
+         LA    14,TSAVE   
+         ST    13,4(0,14)     Save the forward pointer.
+         ST    14,8(0,13)     Save the backward pointer.
+         LM    3,6,0(1)     Loads params into reg 3-6
+         LR    13,14  '
+         SR    7,7           zeros out reg 7 for count
+         L     5,0(,5)          loads table length into reg 5
+TLOOP    L     9,0(,3)           loads number to test into 9
+         M     8,=F'1'             makes reg 8-9 a 64 bit number
+         DR    8,6                 divides reg9 by reg 6
+         C     8,=F'0'           checks if reminder is 0
+         BE    MULT
+ADVTAB   LA    3,4(,3)          advances table pointer
+         S     5,=F'1'
+         C     5,=F'0'               checks if EOT
+         BE    PRINTM          
+         B     TLOOP
+MULT     A     7,=F'1'           adds 1 to count
+         B     ADVTAB
+PRINTM   XDECO 7,MULTS         prints lines for each M value
+         XDECO 6,MMS
+         XPRNT PLINET,58
+TEND     DS    0H
+         L     13,4(,13)
+         LM    14,12,12(13)
+         BR    14           End of subroutine
+         LTORG              Literals below here
+TSAVE    DS    18F'0'  
+TABSAV   DS    3F
+TESTM    DS    F               
+PLINET   DC    CL1'0'
+         DC    CL15'There are      '                    
+MULTS    DS    CL12' '
+         DC    CL18' multiples of    '
+MMS      DS    CL12' '                 
+         END   MAIN
+/*
+//FT05F001  DD  DSN=KC02314.SUMMER19.CSCI360.HW5DATA,DISP=SHR
+//
